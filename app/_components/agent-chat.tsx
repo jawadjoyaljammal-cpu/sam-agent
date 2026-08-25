@@ -2,7 +2,7 @@
 
 import type { UserContent } from "ai";
 import { useEveAgent } from "eve/react";
-import { AlertCircleIcon, BrainIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { AlertCircleIcon, BrainIcon, PlusIcon, SquareIcon ,MicIcon } from "lucide-react";
 import { useState } from "react";
 import {
   Conversation,
@@ -32,7 +32,7 @@ export function AgentChat({
   readonly sessionless?: boolean;
 }) {
   const [cancellationError, setCancellationError] = useState<string>();
-  const agent = useEveAgent({
+  const [isListening, setIsListening] = us
     initialSession:
       sessionId === undefined
         ? undefined
@@ -104,7 +104,65 @@ export function AgentChat({
 
     await agent.send(parts, options);
   };
+const startListening = () => {
 
+  const SpeechRecognition =
+
+    (window as any).SpeechRecognition ||
+
+    (window as any).webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+
+    alert("Voice recognition is not supported on this browser.");
+
+    return;
+
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "en-US";
+
+  recognition.continuous = false;
+
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+
+    setIsListening(true);
+
+  };
+
+  recognition.onend = () => {
+
+    setIsListening(false);
+
+  };
+
+  recognition.onerror = () => {
+
+    setIsListening(false);
+
+  };
+
+  recognition.onresult = (event: any) => {
+
+    const transcript = event.results[0][0].transcript;
+
+    void handleSubmit({
+
+      text: transcript,
+
+      files: [],
+
+    });
+
+  };
+
+  recognition.start();
+
+};
   const composer = (
     <PromptInput onSubmit={handleSubmit}>
       <PromptInputTextarea disabled={isRestoring} placeholder="Send a message…" />
@@ -117,7 +175,21 @@ export function AgentChat({
         >
           <SquareIcon className="size-3 fill-current" />
         </PromptInputButton>
-      ) : null}
+      PromptInputButton
+
+  aria-label="Voice"
+
+  className="absolute right-24 bottom-2.5 rounded-full"
+
+  disabled={isRestoring || isBusy}
+
+  onClick={startListening}
+
+>
+
+  <MicIcon className={isListening ? "size-4 animate-pulse" : "size-4"} />
+
+</PromptInputButton
       <PromptInputSubmit disabled={isRestoring} status={isBusy ? undefined : agent.status} />
     </PromptInput>
   );
