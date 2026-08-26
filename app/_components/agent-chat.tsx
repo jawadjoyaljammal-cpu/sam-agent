@@ -2,8 +2,8 @@
 
 import type { UserContent } from "ai";
 import { useEveAgent } from "eve/react";
-import { AlertCircleIcon, BrainIcon, PlusIcon, SquareIcon ,MicIcon } from "lucide-react";
-import { useState } from "react";
+import { AlertCircleIcon, BrainIcon, MicIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -24,6 +24,34 @@ import { AgentMessage } from "./agent-message";
 
 const AGENT_NAME = "sam";
 
+type VoiceRecognitionEvent = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type VoiceRecognitionErrorEvent = {
+  error: string;
+};
+
+type VoiceRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onend: (() => void) | null;
+  onerror: ((event: VoiceRecognitionErrorEvent) => void) | null;
+  onresult: ((event: VoiceRecognitionEvent) => void) | null;
+  onstart: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type VoiceRecognitionConstructor = new () => VoiceRecognition;
+
+type VoiceWindow = Window &
+  typeof globalThis & {
+    SpeechRecognition?: VoiceRecognitionConstructor;
+    webkitSpeechRecognition?: VoiceRecognitionConstructor;
+  };
+
 export function AgentChat({
   sessionId,
   sessionless = false,
@@ -32,7 +60,13 @@ export function AgentChat({
   readonly sessionless?: boolean;
 }) {
   const [cancellationError, setCancellationError] = useState<string>();
-  const [isListening, setIsListening] = us
+  const [isListening, setIsListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const recognitionRef = useRef<VoiceRecognition | null>(null);
+  const voiceModeRef = useRef(false);
+  const waitingForReplyRef = useRef(false);
+  const lastSpokenMessageIdRef = useRef<string | undefined>(undefined);
+  const agent = useEveAgent({
     initialSession:
       sessionId === undefined
         ? undefined
@@ -55,6 +89,8 @@ export function AgentChat({
   });
 
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
+  const isBusyRef = useRef(isBusy);
+  isBusyRef.current = isBusy;
   const isRestoring = sessionId !== undefined && agent.events.length === 0 && isBusy;
   const isEmpty = agent.data.messages.length === 0;
   const lastMessage = agent.data.messages.at(-1);
@@ -104,65 +140,144 @@ export function AgentChat({
 
     await agent.send(parts, options);
   };
-const startListening = () => {
 
-  const SpeechRecognition =
-
-    (window as any).SpeechRecognition ||
-
-    (window as any).webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-
-    alert("Voice recognition is not supported on this browser.");
-
-    return;
-
-  }
-
-  const recognition = new SpeechRecognition();
-
-  recognition.lang = "en-US";
-
-  recognition.continuous = false;
-
-  recognition.interimResults = false;
-
-  recognition.onstart = () => {
-
-    setIsListening(true);
-
-  };
-
-  recognition.onend = () => {
-
+  const stopVoiceMode = () => {
+    voiceModeRef.current = false;
+    waitingForReplyRef.current = false;
+    setVoiceMode(false);
     setIsListening(false);
-
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    window.speechSynthesis?.cancel();
   };
 
-  recognition.onerror = () => {
+  const startListening = () => {
+    if (!voiceModeRef.current || recognitionRef.current || isBusyRef.current) return;
 
-    setIsListening(false);
+    const voiceWindow = window as VoiceWindow;
+    const SpeechRecognition =
+      voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
 
+    if (!SpeechRecognition) {
+      stopVoiceMode();
+      alert("Voice recognition is not supported on this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "en-CA";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    let hadError = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onerror = (event) => {
+      hadError = true;
+      setIsListening(false);
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        stopVoiceMode();
+      }
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (!transcript) return;
+
+      waitingForReplyRef.current = true;
+      void handleSubmit({ text: transcript, files: [] }).catch(() => {
+        waitingForReplyRef.current = false;
+      });
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setIsListening(false);
+
+      if (
+        voiceModeRef.current &&
+        !waitingForReplyRef.current &&
+        !isBusyRef.current &&
+        !hadError
+      ) {
+        window.setTimeout(startListening, 350);
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
   };
 
-  recognition.onresult = (event: any) => {
+  const toggleVoiceMode = () => {
+    if (voiceModeRef.current) {
+      stopVoiceMode();
+      return;
+    }
 
-    const transcript = event.results[0][0].transcript;
+    voiceModeRef.current = true;
+    setVoiceMode(true);
 
-    void handleSubmit({
+    // Unlock speech output during the user's first tap (required by mobile browsers).
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const unlock = new SpeechSynthesisUtterance(".");
+      unlock.lang = "en-CA";
+      unlock.volume = 0.01;
+      window.speechSynthesis.speak(unlock);
+    }
 
-      text: transcript,
-
-      files: [],
-
-    });
-
+    startListening();
   };
 
-  recognition.start();
+  useEffect(() => {
+    if (
+      !voiceMode ||
+      isBusy ||
+      lastMessage?.role !== "assistant" ||
+      lastSpokenMessageIdRef.current === lastMessage.id
+    ) {
+      return;
+    }
 
-};
+    const text = lastMessage.parts
+      .filter((part): part is typeof part & { text: string } => part.type === "text")
+      .map((part) => part.text)
+      .join(" ")
+      .trim();
+
+    if (!text) return;
+
+    lastSpokenMessageIdRef.current = lastMessage.id;
+    waitingForReplyRef.current = false;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-CA";
+    utterance.rate = 0.95;
+    utterance.onend = () => {
+      if (voiceModeRef.current) window.setTimeout(startListening, 250);
+    };
+    utterance.onerror = () => {
+      if (voiceModeRef.current) window.setTimeout(startListening, 250);
+    };
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, [isBusy, lastMessage, voiceMode]);
+
+  useEffect(
+    () => () => {
+      voiceModeRef.current = false;
+      recognitionRef.current?.stop();
+      window.speechSynthesis?.cancel();
+    },
+    [],
+  );
+
   const composer = (
     <PromptInput onSubmit={handleSubmit}>
       <PromptInputTextarea disabled={isRestoring} placeholder="Send a message…" />
@@ -175,21 +290,17 @@ const startListening = () => {
         >
           <SquareIcon className="size-3 fill-current" />
         </PromptInputButton>
-      PromptInputButton
-
-  aria-label="Voice"
-
-  className="absolute right-24 bottom-2.5 rounded-full"
-
-  disabled={isRestoring || isBusy}
-
-  onClick={startListening}
-
->
-
-  <MicIcon className={isListening ? "size-4 animate-pulse" : "size-4"} />
-
-</PromptInputButton
+      ) : null}
+      <PromptInputButton
+        aria-label={voiceMode ? "Turn off voice mode" : "Turn on voice mode"}
+        className="absolute right-24 bottom-2.5 rounded-full"
+        disabled={isRestoring}
+        onClick={toggleVoiceMode}
+        type="button"
+        variant={voiceMode ? "default" : "ghost"}
+      >
+        <MicIcon className={isListening ? "size-4 animate-pulse" : "size-4"} />
+      </PromptInputButton>
       <PromptInputSubmit disabled={isRestoring} status={isBusy ? undefined : agent.status} />
     </PromptInput>
   );
