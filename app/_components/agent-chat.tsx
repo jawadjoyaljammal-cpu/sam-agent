@@ -24,6 +24,14 @@ import { AgentMessage } from "./agent-message";
 
 const AGENT_NAME = "sam";
 
+const VOICE_LANGUAGES = {
+  ar: { label: "AR", locale: "ar-SA", name: "العربية" },
+  en: { label: "EN", locale: "en-CA", name: "English" },
+  fr: { label: "FR", locale: "fr-CA", name: "Français" },
+} as const;
+
+type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
+
 type VoiceRecognitionEvent = {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
 };
@@ -62,8 +70,10 @@ export function AgentChat({
   const [cancellationError, setCancellationError] = useState<string>();
   const [isListening, setIsListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>("en");
   const recognitionRef = useRef<VoiceRecognition | null>(null);
   const voiceModeRef = useRef(false);
+  const voiceLanguageRef = useRef<VoiceLanguage>("en");
   const waitingForReplyRef = useRef(false);
   const lastSpokenMessageIdRef = useRef<string | undefined>(undefined);
   const agent = useEveAgent({
@@ -166,7 +176,7 @@ export function AgentChat({
 
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
-    recognition.lang = "en-CA";
+    recognition.lang = VOICE_LANGUAGES[voiceLanguageRef.current].locale;
     recognition.continuous = false;
     recognition.interimResults = false;
 
@@ -211,6 +221,22 @@ export function AgentChat({
     }
   };
 
+  const cycleVoiceLanguage = () => {
+    const languageOrder: VoiceLanguage[] = ["en", "ar", "fr"];
+    const currentIndex = languageOrder.indexOf(voiceLanguageRef.current);
+    const nextLanguage = languageOrder[(currentIndex + 1) % languageOrder.length] ?? "en";
+    const activeRecognition = recognitionRef.current;
+
+    voiceLanguageRef.current = nextLanguage;
+    setVoiceLanguage(nextLanguage);
+
+    if (activeRecognition) {
+      activeRecognition.stop();
+    } else if (voiceModeRef.current && !isBusyRef.current) {
+      window.setTimeout(startListening, 150);
+    }
+  };
+
   const toggleVoiceMode = () => {
     if (voiceModeRef.current) {
       stopVoiceMode();
@@ -224,7 +250,7 @@ export function AgentChat({
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const unlock = new SpeechSynthesisUtterance(".");
-      unlock.lang = "en-CA";
+      unlock.lang = VOICE_LANGUAGES[voiceLanguageRef.current].locale;
       unlock.volume = 0.01;
       window.speechSynthesis.speak(unlock);
     }
@@ -256,7 +282,7 @@ export function AgentChat({
     recognitionRef.current = null;
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-CA";
+    utterance.lang = VOICE_LANGUAGES[voiceLanguageRef.current].locale;
     utterance.rate = 0.95;
     utterance.onend = () => {
       if (voiceModeRef.current) window.setTimeout(startListening, 250);
@@ -291,6 +317,17 @@ export function AgentChat({
           <SquareIcon className="size-3 fill-current" />
         </PromptInputButton>
       ) : null}
+      <PromptInputButton
+        aria-label={`Voice language: ${VOICE_LANGUAGES[voiceLanguage].name}. Tap to change.`}
+        className="absolute right-36 bottom-2.5 min-w-9 rounded-full px-2 font-semibold text-xs"
+        disabled={isRestoring}
+        onClick={cycleVoiceLanguage}
+        title={VOICE_LANGUAGES[voiceLanguage].name}
+        type="button"
+        variant="ghost"
+      >
+        {VOICE_LANGUAGES[voiceLanguage].label}
+      </PromptInputButton>
       <PromptInputButton
         aria-label={voiceMode ? "Turn off voice mode" : "Turn on voice mode"}
         className="absolute right-24 bottom-2.5 rounded-full"
