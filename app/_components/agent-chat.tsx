@@ -25,7 +25,7 @@ import { AgentMessage } from "./agent-message";
 const AGENT_NAME = "sam";
 
 const VOICE_LANGUAGES = {
-  ar: { label: "AR", locale: "ar-SA", name: "العربية" },
+  ar: { label: "AR", locale: "ar-LB", name: "العربية اللبنانية" },
   en: { label: "EN", locale: "en-CA", name: "English" },
   fr: { label: "FR", locale: "fr-CA", name: "Français" },
 } as const;
