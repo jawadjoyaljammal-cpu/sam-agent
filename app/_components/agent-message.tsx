@@ -13,6 +13,7 @@ import {
   FileIcon,
   ImageIcon,
   KeyRoundIcon,
+  PhoneCallIcon,
   XCircleIcon,
 } from "lucide-react";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
@@ -149,11 +150,58 @@ function AgentMessagePart({
               onInputResponses={onInputResponses}
             />
             <ToolOutput errorText={part.errorText} output={part.output} />
+            <PhoneCallAction part={part} />
           </ToolContent>
         </Tool>
       );
     }
   }
+}
+
+type PhoneCallOutput = {
+  readonly callUrl: string;
+  readonly clientName: string;
+  readonly displayNumber: string;
+  readonly purpose: string;
+  readonly requiresUserTap: true;
+};
+
+function isPhoneCallOutput(output: unknown): output is PhoneCallOutput {
+  if (typeof output !== "object" || output === null) return false;
+  const value = output as Record<string, unknown>;
+  return (
+    typeof value.callUrl === "string" &&
+    value.callUrl.startsWith("tel:") &&
+    typeof value.clientName === "string" &&
+    typeof value.displayNumber === "string" &&
+    typeof value.purpose === "string" &&
+    value.requiresUserTap === true
+  );
+}
+
+function PhoneCallAction({ part }: { readonly part: EveDynamicToolPart }) {
+  if (part.toolName !== "prepare_phone_call" || !isPhoneCallOutput(part.output)) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
+      <div className="space-y-1 text-right" dir="rtl">
+        <p className="font-medium text-sm">المكالمة جاهزة: {part.output.clientName}</p>
+        <p className="text-muted-foreground text-sm">{part.output.displayNumber}</p>
+        <p className="text-muted-foreground text-sm">الهدف: {part.output.purpose}</p>
+      </div>
+      <Button asChild className="w-full" size="lg">
+        <a href={part.output.callUrl}>
+          <PhoneCallIcon className="size-4" />
+          اتصل الآن
+        </a>
+      </Button>
+      <p className="text-center text-muted-foreground text-xs" dir="rtl">
+        لن تبدأ المكالمة حتى تضغط زر الاتصال في هاتفك.
+      </p>
+    </div>
+  );
 }
 
 function QuestionRequest({
