@@ -13,6 +13,7 @@ import {
   FileIcon,
   ImageIcon,
   KeyRoundIcon,
+  MessageCircleIcon,
   PhoneCallIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -151,6 +152,7 @@ function AgentMessagePart({
             />
             <ToolOutput errorText={part.errorText} output={part.output} />
             <PhoneCallAction part={part} />
+            <WhatsAppAction part={part} />
           </ToolContent>
         </Tool>
       );
@@ -199,6 +201,52 @@ function PhoneCallAction({ part }: { readonly part: EveDynamicToolPart }) {
       </Button>
       <p className="text-center text-muted-foreground text-xs" dir="rtl">
         لن تبدأ المكالمة حتى تضغط زر الاتصال في هاتفك.
+      </p>
+    </div>
+  );
+}
+
+type WhatsAppOutput = {
+  readonly clientName: string;
+  readonly displayNumber: string;
+  readonly purpose: string;
+  readonly requiresUserTap: true;
+  readonly whatsappUrl: string;
+};
+
+function isWhatsAppOutput(output: unknown): output is WhatsAppOutput {
+  if (typeof output !== "object" || output === null) return false;
+  const value = output as Record<string, unknown>;
+  return (
+    typeof value.whatsappUrl === "string" &&
+    value.whatsappUrl.startsWith("https://wa.me/") &&
+    typeof value.clientName === "string" &&
+    typeof value.displayNumber === "string" &&
+    typeof value.purpose === "string" &&
+    value.requiresUserTap === true
+  );
+}
+
+function WhatsAppAction({ part }: { readonly part: EveDynamicToolPart }) {
+  if (part.toolName !== "prepare_whatsapp_contact" || !isWhatsAppOutput(part.output)) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-green-500/30 bg-green-500/5 p-3">
+      <div className="space-y-1 text-right" dir="rtl">
+        <p className="font-medium text-sm">WhatsApp: {part.output.clientName}</p>
+        <p className="text-muted-foreground text-sm">{part.output.displayNumber}</p>
+        <p className="text-muted-foreground text-sm">الهدف: {part.output.purpose}</p>
+      </div>
+      <Button asChild className="w-full bg-green-600 text-white hover:bg-green-700" size="lg">
+        <a href={part.output.whatsappUrl} rel="noreferrer" target="_blank">
+          <MessageCircleIcon className="size-4" />
+          افتح WhatsApp
+        </a>
+      </Button>
+      <p className="text-center text-muted-foreground text-xs" dir="rtl">
+        بعد فتح المحادثة، اضغط رمز الهاتف داخل WhatsApp لبدء المكالمة.
       </p>
     </div>
   );
