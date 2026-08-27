@@ -70,10 +70,10 @@ export function AgentChat({
   const [cancellationError, setCancellationError] = useState<string>();
   const [isListening, setIsListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>("en");
+  const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>("ar");
   const recognitionRef = useRef<VoiceRecognition | null>(null);
   const voiceModeRef = useRef(false);
-  const voiceLanguageRef = useRef<VoiceLanguage>("en");
+  const voiceLanguageRef = useRef<VoiceLanguage>("ar");
   const waitingForReplyRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const restartTimerRef = useRef<number | null>(null);
@@ -202,6 +202,7 @@ export function AgentChat({
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         shouldRestart = false;
         stopVoiceMode();
+        alert("اسمح لـ Sam باستخدام الميكروفون من إعدادات Safari، ثم اضغط زر الميكروفون مرة واحدة.");
       }
     };
     recognition.onresult = (event) => {
@@ -264,15 +265,9 @@ export function AgentChat({
     voiceModeRef.current = true;
     setVoiceMode(true);
 
-    // Unlock speech output during the user's first tap (required by mobile browsers).
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const unlock = new SpeechSynthesisUtterance(".");
-      unlock.lang = VOICE_LANGUAGES[voiceLanguageRef.current].locale;
-      unlock.volume = 0.01;
-      window.speechSynthesis.speak(unlock);
-    }
-
+    // Start recognition directly inside the tap event. Playing a silent utterance
+    // first can take over the iPhone audio session and make the first tap appear
+    // to do nothing.
     startListening();
   };
 
@@ -355,13 +350,13 @@ export function AgentChat({
       </PromptInputButton>
       <PromptInputButton
         aria-label={voiceMode ? "Turn off voice mode" : "Turn on voice mode"}
-        className="absolute right-24 bottom-2.5 rounded-full"
+        className="absolute right-24 bottom-1.5 size-11 touch-manipulation rounded-full"
         disabled={isRestoring}
         onClick={toggleVoiceMode}
         type="button"
         variant={voiceMode ? "default" : "ghost"}
       >
-        <MicIcon className={isListening ? "size-4 animate-pulse" : "size-4"} />
+        <MicIcon className={isListening ? "size-5 animate-pulse" : "size-5"} />
       </PromptInputButton>
       <PromptInputSubmit disabled={isRestoring} status={isBusy ? undefined : agent.status} />
     </PromptInput>
