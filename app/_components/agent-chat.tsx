@@ -75,6 +75,8 @@ export function AgentChat({
   const voiceModeRef = useRef(false);
   const voiceLanguageRef = useRef<VoiceLanguage>("en");
   const waitingForReplyRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const restartTimerRef = useRef<number | null>(null);
   const lastSpokenMessageIdRef = useRef<string | undefined>(undefined);
   const agent = useEveAgent({
     initialSession:
@@ -154,6 +156,11 @@ export function AgentChat({
   const stopVoiceMode = () => {
     voiceModeRef.current = false;
     waitingForReplyRef.current = false;
+    isSpeakingRef.current = false;
+    if (restartTimerRef.current !== null) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     setVoiceMode(false);
     setIsListening(false);
     recognitionRef.current?.stop();
@@ -162,7 +169,14 @@ export function AgentChat({
   };
 
   const startListening = () => {
-    if (!voiceModeRef.current || recognitionRef.current || isBusyRef.current) return;
+    if (
+      !voiceModeRef.current ||
+      recognitionRef.current ||
+      isBusyRef.current ||
+      isSpeakingRef.current
+    ) {
+      return;
+    }
 
     const voiceWindow = window as VoiceWindow;
     const SpeechRecognition =
@@ -180,13 +194,13 @@ export function AgentChat({
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    let hadError = false;
+    let shouldRestart = true;
 
     recognition.onstart = () => setIsListening(true);
     recognition.onerror = (event) => {
-      hadError = true;
       setIsListening(false);
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        shouldRestart = false;
         stopVoiceMode();
       }
     };
@@ -207,9 +221,13 @@ export function AgentChat({
         voiceModeRef.current &&
         !waitingForReplyRef.current &&
         !isBusyRef.current &&
-        !hadError
+        !isSpeakingRef.current &&
+        shouldRestart
       ) {
-        window.setTimeout(startListening, 350);
+        restartTimerRef.current = window.setTimeout(() => {
+          restartTimerRef.current = null;
+          startListening();
+        }, 500);
       }
     };
 
@@ -278,6 +296,7 @@ export function AgentChat({
 
     lastSpokenMessageIdRef.current = lastMessage.id;
     waitingForReplyRef.current = false;
+    isSpeakingRef.current = true;
     recognitionRef.current?.stop();
     recognitionRef.current = null;
 
@@ -285,10 +304,12 @@ export function AgentChat({
     utterance.lang = VOICE_LANGUAGES[voiceLanguageRef.current].locale;
     utterance.rate = 0.95;
     utterance.onend = () => {
-      if (voiceModeRef.current) window.setTimeout(startListening, 250);
+      isSpeakingRef.current = false;
+      if (voiceModeRef.current) window.setTimeout(startListening, 350);
     };
     utterance.onerror = () => {
-      if (voiceModeRef.current) window.setTimeout(startListening, 250);
+      isSpeakingRef.current = false;
+      if (voiceModeRef.current) window.setTimeout(startListening, 350);
     };
 
     window.speechSynthesis.cancel();
@@ -298,6 +319,10 @@ export function AgentChat({
   useEffect(
     () => () => {
       voiceModeRef.current = false;
+      isSpeakingRef.current = false;
+      if (restartTimerRef.current !== null) {
+        window.clearTimeout(restartTimerRef.current);
+      }
       recognitionRef.current?.stop();
       window.speechSynthesis?.cancel();
     },
