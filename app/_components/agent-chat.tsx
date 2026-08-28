@@ -5,6 +5,7 @@ import { useEveAgent } from "eve/react";
 import {
   AlertCircleIcon,
   BrainIcon,
+  CameraIcon,
   MicIcon,
   PaperclipIcon,
   PlusIcon,
@@ -27,6 +28,7 @@ import {
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
+  usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Button } from "@/components/ui/button";
@@ -363,7 +365,7 @@ export function AgentChat({
       onSubmit={handleSubmit}
     >
       <PromptInputTextarea
-        className="pl-12"
+        className="pl-24"
         disabled={isRestoring}
         placeholder="Send a message…"
       />
@@ -380,6 +382,7 @@ export function AgentChat({
           <PromptInputActionAddAttachments label="Camera, photos, or files" />
         </PromptInputActionMenuContent>
       </PromptInputActionMenu>
+      <CameraAttachmentButton disabled={isRestoring} />
       {isBusy && !isRestoring ? (
         <PromptInputButton
           aria-label="Stop"
@@ -474,6 +477,38 @@ export function AgentChat({
         <div className="w-full">{composer}</div>
       </div>
     </main>
+  );
+}
+
+function CameraAttachmentButton({ disabled }: { readonly disabled: boolean }) {
+  const attachments = usePromptInputAttachments();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  return (
+    <>
+      <input
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          const files = event.currentTarget.files;
+          if (files && files.length > 0) attachments.add(files);
+          event.currentTarget.value = "";
+        }}
+        ref={inputRef}
+        type="file"
+      />
+      <PromptInputButton
+        aria-label="Take a photo"
+        className="absolute bottom-2.5 left-12 rounded-full"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+        tooltip="Take a photo"
+        type="button"
+      >
+        <CameraIcon className="size-5" />
+      </PromptInputButton>
+    </>
   );
 }
 
