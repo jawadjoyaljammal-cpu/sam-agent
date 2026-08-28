@@ -2,7 +2,14 @@
 
 import type { UserContent } from "ai";
 import { useEveAgent } from "eve/react";
-import { AlertCircleIcon, BrainIcon, MicIcon, PlusIcon, SquareIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  BrainIcon,
+  MicIcon,
+  PaperclipIcon,
+  PlusIcon,
+  SquareIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Conversation,
@@ -12,6 +19,10 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
   PromptInputButton,
   type PromptInputMessage,
   PromptInputSubmit,
@@ -23,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { AgentMessage } from "./agent-message";
 
 const AGENT_NAME = "sam";
+const LAST_SESSION_STORAGE_KEY = "sam:last-session-id";
 
 const VOICE_LANGUAGES = {
   ar: { label: "AR", locale: "ar-LB", name: "العربية اللبنانية" },
@@ -78,6 +90,20 @@ export function AgentChat({
   const isSpeakingRef = useRef(false);
   const restartTimerRef = useRef<number | null>(null);
   const lastSpokenMessageIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (sessionId !== undefined) {
+      window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, sessionId);
+      return;
+    }
+
+    if (sessionless) return;
+
+    const savedSessionId = window.localStorage.getItem(LAST_SESSION_STORAGE_KEY);
+    if (savedSessionId) {
+      window.location.replace(`/s/${encodeURIComponent(savedSessionId)}`);
+    }
+  }, [sessionId, sessionless]);
+
   const agent = useEveAgent({
     initialSession:
       sessionId === undefined
@@ -88,6 +114,9 @@ export function AgentChat({
           },
     resume: sessionId !== undefined,
     onSessionChange(session) {
+      if (session !== undefined) {
+        window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, session.sessionId);
+      }
       if (sessionId === undefined && session !== undefined) {
         // Next patches window.history to navigate, which would detach the active stream.
         History.prototype.replaceState.call(
@@ -325,8 +354,32 @@ export function AgentChat({
   );
 
   const composer = (
-    <PromptInput onSubmit={handleSubmit}>
-      <PromptInputTextarea disabled={isRestoring} placeholder="Send a message…" />
+    <PromptInput
+      accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx"
+      maxFileSize={10 * 1024 * 1024}
+      maxFiles={5}
+      multiple
+      onError={({ message }) => alert(message)}
+      onSubmit={handleSubmit}
+    >
+      <PromptInputTextarea
+        className="pl-12"
+        disabled={isRestoring}
+        placeholder="Send a message…"
+      />
+      <PromptInputActionMenu>
+        <PromptInputActionMenuTrigger
+          aria-label="Add camera photo or file"
+          className="absolute bottom-2.5 left-2.5 rounded-full"
+          disabled={isRestoring}
+          tooltip="Camera, photos, or files"
+        >
+          <PaperclipIcon className="size-5" />
+        </PromptInputActionMenuTrigger>
+        <PromptInputActionMenuContent>
+          <PromptInputActionAddAttachments label="Camera, photos, or files" />
+        </PromptInputActionMenuContent>
+      </PromptInputActionMenu>
       {isBusy && !isRestoring ? (
         <PromptInputButton
           aria-label="Stop"
