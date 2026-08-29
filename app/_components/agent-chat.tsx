@@ -1,6 +1,7 @@
 "use client";
 
 import type { UserContent } from "ai";
+import { ClientError } from "eve/client";
 import { useEveAgent } from "eve/react";
 import {
   AlertCircleIcon,
@@ -119,7 +120,7 @@ export function AgentChat({
       if (session !== undefined) {
         window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, session.sessionId);
       }
-      if (sessionId === undefined && session !== undefined) {
+      if (session !== undefined && session.sessionId !== sessionId) {
         // Next patches window.history to navigate, which would detach the active stream.
         History.prototype.replaceState.call(
           window.history,
@@ -163,25 +164,36 @@ export function AgentChat({
     setCancellationError(undefined);
     const options = isBusy ? { turnPolicy: "steer" as const } : undefined;
 
-    if (message.files.length === 0) {
-      await agent.send(text, options);
-      return;
+    let content: string | UserContent = text;
+    if (message.files.length > 0) {
+      const parts: UserContent = [];
+      if (text.length > 0) {
+        parts.push({ text, type: "text" });
+      }
+      for (const file of message.files) {
+        parts.push({
+          data: file.url,
+          filename: file.filename,
+          mediaType: file.mediaType,
+          type: "file",
+        });
+      }
+      content = parts;
     }
 
-    const parts: UserContent = [];
-    if (text.length > 0) {
-      parts.push({ text, type: "text" });
-    }
-    for (const file of message.files) {
-      parts.push({
-        data: file.url,
-        filename: file.filename,
-        mediaType: file.mediaType,
-        type: "file",
-      });
-    }
+    try {
+      await agent.send(content, options);
+    } catch (error) {
+      if (!(error instanceof ClientError) || error.code !== "session_not_active") {
+        throw error;
+      }
 
-    await agent.send(parts, options);
+      // An expired durable session cannot accept another turn. Detach it locally,
+      // forget the stale saved ID, and resend once to create a fresh session.
+      window.localStorage.removeItem(LAST_SESSION_STORAGE_KEY);
+      agent.reset();
+      await agent.send(content);
+    }
   };
 
   const stopVoiceMode = () => {
